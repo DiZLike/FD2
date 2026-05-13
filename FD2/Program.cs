@@ -25,7 +25,7 @@ namespace FD2
                 sampleRate: 44100,
                 mdctBlockSize: 2048,
                 mdctSmallBlockSize: 256,
-                quality: 10.0f
+                quality: 1.0f
             );
 
             // Encode
