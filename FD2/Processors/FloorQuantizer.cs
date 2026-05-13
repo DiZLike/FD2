@@ -1,4 +1,4 @@
-// FloorQuantizer.cs - С АДАПТИВНЫМ КАЧЕСТВОМ И ЛУЧШЕЙ ТОЧНОСТЬЮ
+// FloorQuantizer.cs - С АДАПТИВНЫМ КАЧЕСТВОМ, ГЛАДКОСТЬЮ И ЭКСТРЕМАЛЬНЫМ СЖАТИЕМ
 using System;
 
 namespace FD2.Processors
@@ -54,16 +54,24 @@ namespace FD2.Processors
 
                 floor[i] = baseFloor;
 
-                // ✅ УЛУЧШЕННОЕ КВАНТОВАНИЕ: больше бит для лучшего качества
+                // ✅ КВАНТОВАНИЕ С АДАПТИВНОЙ ГЛАДКОСТЬЮ
                 float normalized = coeffs[i] / baseFloor;
                 normalized = Math.Clamp(normalized, -1.0f, 1.0f);
 
                 if (_quality < 2.0f)
                 {
-                    // 5-битное квантование (32 уровня)
-                    int levels32 = (int)((normalized + 1.0f) * 15.5f);
-                    levels32 = Math.Clamp(levels32, 0, 31);
-                    codes[i] = (byte)(levels32 * 8);
+                    // ✅ 4-БИТНОЕ КВАНТОВАНИЕ (16 уровней) + ИНТЕРПОЛЯЦИЯ
+                    // Основное квантование
+                    int levels16 = (int)((normalized + 1.0f) * 7.5f);
+                    levels16 = Math.Clamp(levels16, 0, 15);
+                    
+                    // ✅ Добавляем информацию о "дробной части" в верхние биты
+                    // Это позволит при декодировании сделать плавный переход
+                    float fractional = ((normalized + 1.0f) * 7.5f) - levels16;
+                    
+                    // Кодируем: нижние 4 бита = основное значение, верхние 4 = дробная часть
+                    int fractionalCode = (int)(fractional * 15f);
+                    codes[i] = (byte)((levels16) | (fractionalCode << 4));
                 }
                 else if (_quality < 4.0f)
                 {
@@ -97,21 +105,31 @@ namespace FD2.Processors
 
             if (_quality < 2.0f)
             {
-                int level = code / 8;
-                normalized = (level - 15.5f) / 15.5f;
+                // 4-БИТНОЕ ДЕКОДИРОВАНИЕ С ИНТЕРПОЛЯЦИЕЙ
+                int level = code & 0x0F;  // Нижние 4 бита
+                int fractionalCode = (code >> 4) & 0x0F;  // Верхние 4 бита
+                
+                // Восстанавливаем значение с дробной частью
+                float fractional = fractionalCode / 15f;
+                float continuousValue = level + fractional;  // 0-15.0 с плавным переходом
+                
+                normalized = (continuousValue / 7.5f) - 1.0f;
             }
             else if (_quality < 4.0f)
             {
+                // 6-битное декодирование
                 int level = code / 4;
                 normalized = (level - 31.5f) / 31.5f;
             }
             else if (_quality < 7.0f)
             {
+                // 7-битное декодирование
                 int level = code / 2;
                 normalized = (level - 63.5f) / 63.5f;
             }
             else
             {
+                // 8-битное декодирование
                 normalized = (code - 128.0f) / 128.0f;
             }
 
